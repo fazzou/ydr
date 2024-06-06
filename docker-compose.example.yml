@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  ydr:
+    image: ghcr.io/fazzou/ydr
+    environment:
+      - INTERVAL=PT8H
+      - COMMON_FLAGS=--audio-format mp3 --extract-audio --write-thumbnail --download-archive downloaded_videos.txt --dateafter today-1month --embed-metadata --parse-metadata "%(upload_date)s:%(meta_date)s" --break-on-existing --replace-in-metadata meta_date '(\d{4})(\d{2})(\d{2})' '\1-\2-\3'
+    ports:
+      - 8080:80
+    volumes:
+      - /data/example/podcasts:/data
