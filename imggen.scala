@@ -113,15 +113,15 @@ Please respond only with DALL-E prompt.
         imageResponse.body match {
           case Right(bytes) =>
             os.write.over(coverPath, bytes)
-            println(s"Cover image ${
+            scribe.info(s"Cover image ${
                 if (forceRegeneration) "regenerated" else "generated"
               } and saved to: $coverPath")
           case Left(error) =>
-            println(s"Failed to download image: $error")
+            scribe.warn(s"Failed to download image: $error")
         }
       }
     } else {
-      println(
+      scribe.info(
         s"Cover image already exists at: $coverPath. Use forceRegeneration flag to regenerate."
       )
     }

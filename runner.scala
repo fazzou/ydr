@@ -23,7 +23,7 @@ case class Runner(
   val timeout = Duration.ofHours(1).toMillis()
 
   def processAll: Unit = supervised {
-    println("will proces all")
+    scribe.info("Will process all")
     processMany(stateActor.ask(_.getState).dirs)
   }
 
@@ -42,7 +42,7 @@ case class Runner(
     Try {
       val logFile = dirState.path / "log.txt"
 
-      println("updating state actor about sync start")
+      scribe.debug("Updating state actor about sync start")
       stateActor.tell(
         _.update(
           dirState.copy(synchronizationState =
@@ -52,12 +52,12 @@ case class Runner(
       )
 
       val write = ProcessOutput.Readlines { line =>
-        println(line)
+        scribe.info(line)
         os.write.append(logFile, line)
         output.append(line)
       }
 
-      println("spawning proc")
+      scribe.info("Spawning proc")
       val spawned = os
         .proc("yt-dlp", commonFlags)
         .spawn(
@@ -66,17 +66,17 @@ case class Runner(
           stderr = write
         )
       val success = spawned.join(timeout)
-      if (success) println("yt-dlp command succeeded")
+      if (success) scribe.info("yt-dlp command succeeded")
       success
     }.recover {
       case SubprocessException(cr: CommandResult) if cr.exitCode == 101 =>
         true
       case e =>
-        println(s"failed downloading for ${dirState.path} because of:")
+        scribe.warn(s"failed downloading for ${dirState.path} because of:")
         e.printStackTrace()
         false
     }.map { success =>
-      println("finished")
+      scribe.info("finished")
       imgGenActor.foreach(
         _.tell(_.generateImage(dirState.path, forceRegeneration = false))
       )

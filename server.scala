@@ -109,8 +109,8 @@ object YdrServer:
     .errorOut(stringBody)
     .handle(handleWithErrorHandling { case SavePrompt(prompt) =>
       val decodedPrompt = java.net.URLDecoder.decode(prompt, "UTF-8")
-      println("RECEIVED PROMPT:")
-      println(decodedPrompt)
+      scribe.info("Received prompt:")
+      scribe.info(decodedPrompt)
       imgGenActor.ask(_.savePrompt(decodedPrompt)) match {
         case Right(_) =>
           // Regenerate images for all directories
@@ -163,7 +163,7 @@ object YdrServer:
             )
           ).start()
         )(_.stop())
-      println(s"Tapir is running on port ${serverBinding.port}")
+      scribe.info(s"Tapir is running on port ${serverBinding.port}")
       never
     }
 
