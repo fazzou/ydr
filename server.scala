@@ -22,6 +22,8 @@ import scala.concurrent.ExecutionContext
 import sttp.tapir.server.netty.sync.OxStreams
 import sttp.ws.WebSocketFrame
 import scala.concurrent.duration.DurationInt
+import yamusca.data.Show
+import yamusca.data.Template
 
 object YdrServer:
   val dataDir = os.Path(sys.env.get("DATA_DIR").getOrElse("/data"))
@@ -86,10 +88,46 @@ object YdrServer:
     .out(htmlBodyUtf8)
     .handleSuccess(_ => Page.renderStateList(stateActor.ask(_.getState)).render)
 
+  def getPrompt(imgGenActor: ActorRef[ImgGen]) = endpoint.get
+    .in("prompt")
+    .out(htmlBodyUtf8)
+    .errorOut(stringBody)
+    .handle(handleWithErrorHandling { _ =>
+      val currentPrompt = Template.asString(imgGenActor.ask(_.getPrompt()))
+      Page.promptPage(currentPrompt).render
+    })
+
+  case class SavePrompt(prompt: String) derives Schema
+
+  def savePrompt(
+      imgGenActor: ActorRef[ImgGen],
+      stateActor: ActorRef[StateActor]
+  ) = endpoint.post
+    .in("prompt")
+    .in(formBody[SavePrompt])
+    .out(htmlBodyUtf8)
+    .errorOut(stringBody)
+    .handle(handleWithErrorHandling { case SavePrompt(prompt) =>
+      val decodedPrompt = java.net.URLDecoder.decode(prompt, "UTF-8")
+      println("RECEIVED PROMPT:")
+      println(decodedPrompt)
+      imgGenActor.ask(_.savePrompt(decodedPrompt)) match {
+        case Right(_) =>
+          // Regenerate images for all directories
+          val state = stateActor.ask(_.getState)
+          imgGenActor.tell(_.regenerateImages(state.dirs.map(_.path)))
+          Page.promptSaved(decodedPrompt).render
+        case Left(error) =>
+          Page.promptSaveError(error).render
+      }
+    })
+
   def main(args: Array[String]): Unit =
     supervised {
       val imgGenActor =
-        token.map(existingToken => Actor.create(new ImgGen(existingToken)))
+        token.map(existingToken =>
+          Actor.create(new ImgGen(existingToken, dataDir))
+        )
       val stateActor = Actor.create(new StateActor)
       initState(stateActor)
       val runnerActor =
@@ -112,7 +150,12 @@ object YdrServer:
               port = port
             )
           ).addEndpoints(
-            List(
+            imgGenActor.toList.flatMap(definedActor =>
+              List(
+                getPrompt(definedActor),
+                savePrompt(definedActor, stateActor)
+              )
+            ) ++ List(
               stateList(stateActor),
               index(stateActor),
               add(stateActor, runnerActor),

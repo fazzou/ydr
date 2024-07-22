@@ -1,15 +1,17 @@
-import java.time.format.DateTimeFormatter
-import java.time.LocalDateTime
+import org.ocpsoft.prettytime.PrettyTime
+import scalatags.Text.TypedTag
+import scalatags.Text.all.*
 import scalatags.Text.svgAttrs
 import scalatags.Text.svgTags
-import scalatags.Text.all.*
-import org.ocpsoft.prettytime.PrettyTime
+
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 object Page:
 
   private val dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
 
-  def index(s: State) =
+  private def base(bodyContent: TypedTag[String]) =
     html(
       head(
         meta(charset := "UTF-8"),
@@ -26,18 +28,77 @@ object Page:
         script(src := "https://unpkg.com/htmx.org@1.9.12"),
         script(src := "https://unpkg.com/htmx.org@1.9.12/dist/ext/ws.js")
       ),
-      body(`class` := "bg-gray-100 min-h-screen")(
-        div(
-          id := "content",
-          `class` := "container mx-auto px-4 py-8"
-        )(
-          div(`class` := "bg-white shadow rounded-lg overflow-hidden")(
-            newItemEntry,
-            renderStateList(s),
-            buttonRow
-          )
+      body(`class` := "bg-gray-100 min-h-screen font-comic")(
+        div(`class` := "container mx-auto px-4 py-8")(
+          div(`class` := "flex justify-end mb-4")(promptEditButton),
+          bodyContent
         )
       )
+    )
+
+  private def promptEditButton =
+    a(
+      href := "/prompt",
+      `class` := "text-gray-400 hover:text-gray-600 right-5"
+    )(
+      i(`class` := "fas fa-cog")
+    )
+
+  def index(s: State) = base(
+    div(
+      id := "content",
+      `class` := "bg-white shadow rounded-lg overflow-hidden"
+    )(
+      newItemEntry,
+      renderStateList(s),
+      buttonRow
+    )
+  )
+
+  def promptPage(currentPrompt: String): TypedTag[String] = base(
+    div(`class` := "bg-white shadow rounded-lg overflow-hidden p-6")(
+      h1(`class` := "text-2xl font-bold mb-4")("Edit Prompt Template"),
+      form(
+        attr("hx-post") := "/prompt",
+        attr("hx-target") := "#prompt-form",
+        id := "prompt-form",
+        `class` := "space-y-4"
+      )(
+        textarea(
+          name := "prompt",
+          id := "prompt",
+          `class` := "w-full h-64 p-2 border border-gray-300 rounded",
+          placeholder := "Enter your prompt template here..."
+        )(currentPrompt),
+        button(
+          `type` := "submit",
+          `class` := "bg-blue-400 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded"
+        )("Save Prompt")
+      ),
+      div(id := "message")
+    )
+  )
+
+  def promptSaved(newPrompt: String): TypedTag[String] =
+    div(id := "prompt-form")(
+      p(cls := "text-green-600 mb-4")("Prompt saved successfully!"),
+      textarea(
+        name := "prompt",
+        id := "prompt",
+        cls := "w-full h-64 p-2 border border-gray-300 rounded",
+        placeholder := "Enter your prompt template here..."
+      )(newPrompt),
+      button(
+        `type` := "submit",
+        cls := "bg-blue-400 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded mt-4"
+      )("Save Prompt"),
+      script("htmx.trigger('#message', 'showMessage');")
+    )
+
+  def promptSaveError(error: String): TypedTag[String] =
+    div(id := "message", cls := "text-red-600 mt-4")(
+      p(s"Error saving prompt: $error"),
+      script("htmx.trigger('#message', 'showMessage');")
     )
 
   def renderStateList(s: State) = {
@@ -66,17 +127,17 @@ object Page:
           `type` := "text",
           name := "name",
           placeholder := "Name of new item",
-          `class` := "w-full px-4 py-2 rounded border-gray-300"
+          `class` := "w-full px-4 py-2 rounded border border-gray-300"
         ),
         input(
           `type` := "text",
           name := "url",
           placeholder := "Url of new item",
-          `class` := "w-full px-4 py-2 rounded border-gray-300"
+          `class` := "w-full px-4 py-2 rounded border border-gray-300"
         ),
         button(
           `type` := "submit",
-          `class` := "w-full flex items-center justify-center bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded"
+          `class` := "w-full flex items-center justify-center bg-blue-400 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded"
         )(i(`class` := "fa-solid fa-plus mr-2"), "Add New Item")
       )
     )
@@ -126,7 +187,7 @@ object Page:
       )(
         button(
           `type` := "submit",
-          `class` := "w-full flex items-center justify-center px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-lg shadow"
+          `class` := "w-full flex items-center justify-center px-4 py-2 bg-blue-400 hover:bg-blue-600 text-white font-semibold rounded-lg shadow"
         )(
           i(`class` := "fa-solid fa-arrows-rotate mr-2"),
           "Resync All"
