@@ -1,0 +1,81 @@
+name: Update yt-dlp Version
+
+on:
+  schedule:
+    # Check for new releases daily at 6 AM UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-and-update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get latest yt-dlp release
+        id: latest-release
+        run: |
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest | jq -r '.tag_name')
+          echo "latest_version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest yt-dlp version: $LATEST_VERSION"
+
+      - name: Get current version from Dockerfile
+        id: current-version
+        run: |
+          CURRENT_VERSION=$(grep -o 'yt-dlp/releases/download/[^/]*' Dockerfile | sed 's|.*download/||')
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current yt-dlp version in Dockerfile: $CURRENT_VERSION"
+
+      - name: Check if update is needed
+        id: check-update
+        run: |
+          if [ "${{ steps.latest-release.outputs.latest_version }}" != "${{ steps.current-version.outputs.current_version }}" ]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "Update needed: ${{ steps.current-version.outputs.current_version }} -> ${{ steps.latest-release.outputs.latest_version }}"
+          else
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "No update needed. Already on latest version: ${{ steps.current-version.outputs.current_version }}"
+          fi
+
+      - name: Update Dockerfile
+        if: steps.check-update.outputs.update_needed == 'true'
+        run: |
+          NEW_VERSION="${{ steps.latest-release.outputs.latest_version }}"
+          OLD_VERSION="${{ steps.current-version.outputs.current_version }}"
+          
+          # Update the yt-dlp download URL in Dockerfile
+          sed -i "s|yt-dlp/releases/download/$OLD_VERSION/|yt-dlp/releases/download/$NEW_VERSION/|g" Dockerfile
+          
+          echo "Updated Dockerfile with yt-dlp version $NEW_VERSION"
+
+      - name: Create Pull Request
+        if: steps.check-update.outputs.update_needed == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "chore: update yt-dlp to ${{ steps.latest-release.outputs.latest_version }}"
+          title: "Update yt-dlp to ${{ steps.latest-release.outputs.latest_version }}"
+          body: |
+            This automated PR updates yt-dlp from `${{ steps.current-version.outputs.current_version }}` to `${{ steps.latest-release.outputs.latest_version }}`.
+            
+            ## Changes
+            - Updated Dockerfile to use yt-dlp version `${{ steps.latest-release.outputs.latest_version }}`
+            
+            ## Release Notes
+            See the [yt-dlp release notes](https://github.com/yt-dlp/yt-dlp/releases/tag/${{ steps.latest-release.outputs.latest_version }}) for details.
+            
+            ---
+            🤖 This PR was created automatically by the update-yt-dlp workflow.
+          branch: update-yt-dlp-${{ steps.latest-release.outputs.latest_version }}
+          branch-suffix: timestamp
+          delete-branch: true
+          labels: |
+            dependencies
+            automated
+            yt-dlp

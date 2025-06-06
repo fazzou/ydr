@@ -106,17 +106,35 @@ jobs:
           fi
           sed -i "s|ghcr.io/fazzou/ydr-base|${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:${BASE_TAG}|g" project.scala
 
-      - name: Build application Docker image
+      - name: Build application image
         run: |
+          # Build the Docker image with scala-cli
           scala-cli package --docker .
+
+      - name: List built images
+        run: |
+          echo "Available Docker images:"
+          docker images
+          echo "Looking for images matching: ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}"
 
       - name: Tag and push application image
         run: |
-          # Get the image name from scala-cli output
-          APP_IMAGE=$(docker images --format "table {{.Repository}}:{{.Tag}}" | grep "ghcr.io/${{ env.APP_IMAGE_NAME }}" | head -n1)
+          # Get the image name that scala-cli created
+          APP_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}" | head -n1)
           
-          # Tag with all metadata tags
+          if [ -z "$APP_IMAGE" ]; then
+            echo "Error: Could not find built image matching ${{ env.REGISTRY }}/${{ env.APP_IMAGE_NAME }}"
+            exit 1
+          fi
+          
+          echo "Built image: $APP_IMAGE"
+          
+          # Tag and push with all metadata tags
           echo '${{ steps.meta-app.outputs.tags }}' | while read -r tag; do
-            docker tag "$APP_IMAGE" "$tag"
-            docker push "$tag"
+            if [ -n "$tag" ]; then
+              echo "Tagging $APP_IMAGE as: $tag"
+              docker tag "$APP_IMAGE" "$tag"
+              echo "Pushing: $tag"
+              docker push "$tag"
+            fi
           done
