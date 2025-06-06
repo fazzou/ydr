@@ -72,10 +72,8 @@ jobs:
             
             ---
             🤖 This PR was created automatically by the update-yt-dlp workflow.
+            
+            Labels: dependencies, automated, yt-dlp
           branch: update-yt-dlp-${{ steps.latest-release.outputs.latest_version }}
           branch-suffix: timestamp
           delete-branch: true
-          labels: |
-            dependencies
-            automated
-            yt-dlp
