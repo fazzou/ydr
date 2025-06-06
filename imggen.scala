@@ -42,8 +42,8 @@ Please respond only with DALL-E prompt.
       template <- toPromptTemplate(fileContent)
     } yield template
   }.left.map { err =>
-    println(err)
-    println("Falling back to default prompt")
+    scribe.warn(s"Error loading prompt: $err")
+    scribe.info("Falling back to default prompt")
     defaultPrompt
   }.merge
 
@@ -81,7 +81,7 @@ Please respond only with DALL-E prompt.
     val coverPath = directory / "cover.jpg"
 
     if (forceRegeneration || !os.exists(coverPath)) {
-      println("will generate cover image")
+      scribe.info("Will generate cover image")
       val titles = os
         .list(directory)
         .filter(_.ext == "mp3")
@@ -90,8 +90,8 @@ Please respond only with DALL-E prompt.
 
       val prompt = generateImagePrompt(titles)
 
-      println("prompt:")
-      println(prompt)
+      scribe.info("Generated image prompt:")
+      scribe.info(prompt)
       val response = client.createImage(
         ImageCreationRequestBody.ImageCreationBody(
           prompt = prompt,

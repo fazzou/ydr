@@ -5,7 +5,7 @@ RUN apt update && \
 	ffmpeg && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
-RUN wget https://github.com/yt-dlp/yt-dlp/releases/download/2024.07.02/yt-dlp_linux && \
+RUN wget https://github.com/yt-dlp/yt-dlp/releases/download/2025.05.22/yt-dlp_linux && \
 	mv yt-dlp_linux /usr/bin/yt-dlp && \
 	chmod u+x /usr/bin/yt-dlp
 
