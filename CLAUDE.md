@@ -79,3 +79,19 @@ This is a YouTube podcast downloader web application built with Scala 3, using:
 - Structured concurrency with OX for resource safety
 - Functional error handling with Either types
 - Template-based HTML generation with type safety
+
+## GitHub Repository Setup
+
+For the GitHub Actions workflows to work properly, ensure:
+
+1. **Repository Settings > Actions > General**:
+   - Allow "Read and write permissions" for GITHUB_TOKEN
+   - Allow GitHub Actions to create and approve pull requests
+
+2. **Repository Settings > Code and automation > Actions > General**:
+   - Workflow permissions: "Read and write permissions"
+   - Check "Allow GitHub Actions to create and approve pull requests"
+
+3. **Package Registry Access**:
+   - GitHub Container Registry (ghcr.io) should be accessible
+   - Repository visibility affects package permissions

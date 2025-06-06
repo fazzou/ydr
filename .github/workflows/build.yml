@@ -7,6 +7,10 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   REGISTRY: ghcr.io
   BASE_IMAGE_NAME: ${{ github.repository_owner }}/ydr-base
@@ -31,6 +35,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Debug authentication
+        run: |
+          echo "GitHub Actor: ${{ github.actor }}"
+          echo "Registry: ${{ env.REGISTRY }}"
+          echo "Repository: ${{ github.repository }}"
+          echo "Repository Owner: ${{ github.repository_owner }}"
+
       - name: Extract metadata for base image
         id: meta-base
         uses: docker/metadata-action@v5
@@ -41,9 +52,16 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=auto
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Show base image tags
+        run: |
+          echo "Base image tags that will be used:"
+          echo "${{ steps.meta-base.outputs.tags }}"
 
       - name: Build and push base image
         id: build-base
@@ -86,6 +104,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Test registry access
+        run: |
+          echo "Testing registry access..."
+          # Try to pull a public image to test basic connectivity
+          docker pull hello-world:latest
+          echo "Registry connectivity test passed"
+
       - name: Extract metadata for app image
         id: meta-app
         uses: docker/metadata-action@v5
@@ -96,6 +121,13 @@ jobs:
             type=ref,event=pr
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=auto
+
+      - name: Show app image tags
+        run: |
+          echo "App image tags that will be used:"
+          echo "${{ steps.meta-app.outputs.tags }}"
 
       - name: Update base image reference
         run: |
@@ -104,6 +136,7 @@ jobs:
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             BASE_TAG="latest"
           fi
+          echo "Using base image tag: ${BASE_TAG}"
           sed -i "s|ghcr.io/fazzou/ydr-base|${{ env.REGISTRY }}/${{ env.BASE_IMAGE_NAME }}:${BASE_TAG}|g" project.scala
 
       - name: Build application image
