@@ -1,5 +1,6 @@
 import sttp.openai.OpenAISyncClient
 import sttp.openai.requests.images.creation.ImageCreationRequestBody
+import sttp.openai.requests.images.creation.ImageCreationRequestBody.ImageCreationModel
 import sttp.openai.requests.images.ResponseFormat
 import sttp.openai.requests.images.Size
 import os._
@@ -95,9 +96,9 @@ Please respond only with DALL-E prompt.
       val response = client.createImage(
         ImageCreationRequestBody.ImageCreationBody(
           prompt = prompt,
-          model = "dall-e-3",
+          model = ImageCreationModel.GPTImage1,
           n = Some(1),
-          size = Some(Size.Large),
+          size = Some(Size.Medium),
           responseFormat = Some(ResponseFormat.URL)
         )
       )
