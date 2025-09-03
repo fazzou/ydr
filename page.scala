@@ -163,10 +163,27 @@ object Page:
       `class` := "p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center"
     )(
       span(`class` := "text-lg font-medium mb-2 sm:mb-0")(item.path.last),
-      span(
-        `class` := s"text-xs font-semibold py-1 px-3 rounded-full $badgeColor",
-        tooltip.map(title := _)
-      )(statusText)
+      div(`class` := "flex items-center gap-2")(
+        button(
+          `class` := "text-xs bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 transition-colors",
+          attr("hx-post") := s"/resync-single?path=${item.path}",
+          attr("hx-target") := "#state-list",
+          attr("hx-swap") := "outerHTML",
+          item.synchronizationState match {
+            case Synchronizing(_) => disabled := true
+            case _                => ()
+          }
+        )(
+          item.synchronizationState match {
+            case Synchronizing(_) => "Syncing..."
+            case _                => "Sync"
+          }
+        ),
+        span(
+          `class` := s"text-xs font-semibold py-1 px-3 rounded-full $badgeColor",
+          tooltip.map(title := _)
+        )(statusText)
+      )
     )
   }
 

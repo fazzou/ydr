@@ -83,6 +83,26 @@ object YdrServer:
         Page.renderStateList(stateActor.ask(_.getState)).render
       })
 
+  def resyncSingle(
+      stateActor: ActorRef[StateActor],
+      runnerActor: ActorRef[Runner]
+  ) =
+    endpoint.post
+      .in("resync-single")
+      .in(query[String]("path"))
+      .out(htmlBodyUtf8)
+      .errorOut(stringBody)
+      .handle(handleWithErrorHandling { path =>
+        val state = stateActor.ask(_.getState)
+        state.dirs.find(_.path.toString == path) match {
+          case Some(dirState) =>
+            runnerActor.tell(_.process(dirState, isHead = true))
+            Page.renderStateList(stateActor.ask(_.getState)).render
+          case None =>
+            throw new Exception(s"Directory not found: $path")
+        }
+      })
+
   def stateList(stateActor: ActorRef[StateActor]) = endpoint
     .in("state-list")
     .out(htmlBodyUtf8)
@@ -159,7 +179,8 @@ object YdrServer:
               stateList(stateActor),
               index(stateActor),
               add(stateActor, runnerActor),
-              resync(stateActor, runnerActor)
+              resync(stateActor, runnerActor),
+              resyncSingle(stateActor, runnerActor)
             )
           ).start()
         )(_.stop())

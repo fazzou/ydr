@@ -96,10 +96,10 @@ Please respond only with DALL-E prompt.
       val response = client.createImage(
         ImageCreationRequestBody.ImageCreationBody(
           prompt = prompt,
-          model = ImageCreationModel.GPTImage1,
+          model = ImageCreationModel.DALLE3,
           n = Some(1),
-          size = Some(Size.Medium),
-          responseFormat = Some(ResponseFormat.URL)
+          size = Some(Size.Large) // 1024x1024 for DALL-E 3
+          // responseFormat removed - not supported
         )
       )
 
@@ -137,7 +137,7 @@ Please respond only with DALL-E prompt.
 
     val response = client.createChatCompletion(
       ChatRequestBody.ChatBody(
-        model = ChatCompletionModel.GPT4o,
+        model = ChatCompletionModel.GPT5,
         messages = List(UserMessage(TextContent(contentPrompt)))
       )
     )
