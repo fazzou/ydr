@@ -25,6 +25,7 @@ case class Synchronized(
 class StateActor:
   private var state: State =
     State(dirs = List.empty, lastSynchronization = None)
+  private val logsMap: mutable.Map[os.Path, List[String]] = mutable.Map.empty
 
   def update(dirState: DirState): Unit =
     state = state.copy(
@@ -32,6 +33,12 @@ class StateActor:
         .map(dir => dir.path -> dir)
         .toMap + (dirState.path -> dirState)).values.toList
     )
+
+  def updateLogs(path: os.Path, logs: List[String]): Unit =
+    logsMap.put(path, logs)
+
+  def getLogs(path: os.Path): List[String] =
+    logsMap.getOrElse(path, List.empty)
 
   def getState: State =
     state

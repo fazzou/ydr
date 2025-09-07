@@ -108,6 +108,16 @@ object YdrServer:
     .out(htmlBodyUtf8)
     .handleSuccess(_ => Page.renderStateList(stateActor.ask(_.getState)).render)
 
+  def getLogs(stateActor: ActorRef[StateActor]) = endpoint.get
+    .in("logs")
+    .in(query[String]("path"))
+    .out(htmlBodyUtf8)
+    .errorOut(stringBody)
+    .handle(handleWithErrorHandling { path =>
+      val logs = stateActor.ask(_.getLogs(os.Path(path)))
+      Page.renderLogs(path, logs).render
+    })
+
   def getPrompt(imgGenActor: ActorRef[ImgGen]) = endpoint.get
     .in("prompt")
     .out(htmlBodyUtf8)
@@ -177,6 +187,7 @@ object YdrServer:
               )
             ) ++ List(
               stateList(stateActor),
+              getLogs(stateActor),
               index(stateActor),
               add(stateActor, runnerActor),
               resync(stateActor, runnerActor),

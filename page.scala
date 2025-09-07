@@ -46,12 +46,15 @@ object Page:
 
   def index(s: State) = base(
     div(
-      id := "content",
-      `class` := "bg-white shadow rounded-lg overflow-hidden"
-    )(
-      newItemEntry,
-      renderStateList(s),
-      buttonRow
+      div(
+        id := "content",
+        `class` := "bg-white shadow rounded-lg overflow-hidden"
+      )(
+        newItemEntry,
+        renderStateList(s),
+        buttonRow
+      ),
+      logsModal
     )
   )
 
@@ -165,6 +168,13 @@ object Page:
       span(`class` := "text-lg font-medium mb-2 sm:mb-0")(item.path.last),
       div(`class` := "flex items-center gap-2")(
         button(
+          `class` := "text-xs bg-gray-600 text-white py-1 px-3 rounded hover:bg-gray-700 transition-colors",
+          attr("hx-get") := s"/logs?path=${item.path}",
+          attr("hx-target") := "#logs-modal-content",
+          attr("hx-trigger") := "click",
+          onclick := "document.getElementById('logs-modal').classList.remove('hidden')"
+        )("Logs"),
+        button(
           `class` := "text-xs bg-blue-600 text-white py-1 px-3 rounded hover:bg-blue-700 transition-colors",
           attr("hx-post") := s"/resync-single?path=${item.path}",
           attr("hx-target") := "#state-list",
@@ -219,3 +229,41 @@ object Page:
   def formatRelative(date: LocalDateTime): String =
     val prettyTime = new PrettyTime()
     prettyTime.format(date)
+
+  private def logsModal = div(
+    id := "logs-modal",
+    `class` := "hidden fixed inset-0 bg-gray-600 bg-opacity-75 overflow-y-auto h-full w-full z-50"
+  )(
+    div(`class` := "relative top-20 mx-auto p-5 border w-11/12 max-w-4xl shadow-lg rounded-md bg-white")(
+      div(`class` := "mt-3")(
+        div(`class` := "flex justify-between items-center mb-4")(
+          h3(`class` := "text-lg font-medium text-gray-900")("Logs"),
+          button(
+            `class` := "text-gray-400 hover:text-gray-600",
+            onclick := "document.getElementById('logs-modal').classList.add('hidden')"
+          )(
+            i(`class` := "fas fa-times")
+          )
+        ),
+        div(
+          id := "logs-modal-content",
+          `class` := "max-h-96 overflow-y-auto"
+        )(
+          p(`class` := "text-gray-500")("Loading logs...")
+        )
+      )
+    )
+  )
+
+  def renderLogs(path: String, logs: List[String]): TypedTag[String] = div(
+    id := "logs-modal-content",
+    `class` := "max-h-96 overflow-y-auto"
+  )(
+    if (logs.isEmpty) {
+      p(`class` := "text-gray-500")("No logs available for this directory.")
+    } else {
+      pre(`class` := "bg-gray-100 p-4 rounded text-xs font-mono overflow-x-auto")(
+        logs.mkString("\n")
+      )
+    }
+  )

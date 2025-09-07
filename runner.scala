@@ -80,6 +80,7 @@ case class Runner(
       imgGenActor.foreach(
         _.tell(_.generateImage(dirState.path, forceRegeneration = false))
       )
+      stateActor.tell(_.updateLogs(dirState.path, output.toList))
       stateActor.tell(
         _.update(
           dirState.copy(synchronizationState =
