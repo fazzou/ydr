@@ -2,6 +2,7 @@ FROM eclipse-temurin:21
 RUN apt update && \
 	apt install -y --no-install-recommends \
 	python3 \
+	unzip \
 	ffmpeg && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
