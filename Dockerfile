@@ -3,7 +3,6 @@ RUN apt update && \
 	apt install -y --no-install-recommends \
 	python3 \
 	ffmpeg && \
-	curl && \
 	apt-get clean && \
 	rm -rf /var/lib/apt/lists/*
 RUN curl -fsSL https://deno.land/install.sh | sh
