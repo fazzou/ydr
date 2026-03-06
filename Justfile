@@ -1,5 +1,5 @@
 build:
-    scala-cli package --docker .
+    scala package --docker .
 
 publish: build
     docker push ghcr.io/fazzou/ydr:latest
