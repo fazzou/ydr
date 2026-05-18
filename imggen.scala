@@ -10,6 +10,9 @@ import yamusca.imports.*
 import yamusca.implicits.*
 import scala.util.Try
 import java.util.Base64
+import ox.resilience.retry
+import ox.scheduling.Schedule
+import scala.concurrent.duration.DurationInt
 
 class ImgGen(token: String, basePath: os.Path) {
   private val client = OpenAISyncClient(token)
@@ -109,21 +112,36 @@ Please respond only with the image prompt.
       "n" -> 1,
       "size" -> "1024x1024"
     )
-    val response = basicRequest
-      .post(uri"https://api.openai.com/v1/images/generations")
-      .header("Authorization", s"Bearer $token")
-      .header("Content-Type", "application/json")
-      .body(body.render())
-      .response(asString)
-      .send(backend)
+    val schedule = Schedule.exponentialBackoff(10.seconds).maxRetries(3)
 
-    response.body.left.map(err => s"OpenAI request failed: $err").flatMap { raw =>
-      Try {
-        val json = ujson.read(raw)
-        val b64 = json("data").arr.head("b64_json").str
-        Base64.getDecoder.decode(b64)
-      }.toEither.left.map(err => s"Failed to parse OpenAI response: ${err.getMessage}; raw=$raw")
-    }
+    def sendOnce(): Response[Either[String, String]] =
+      basicRequest
+        .post(uri"https://api.openai.com/v1/images/generations")
+        .header("Authorization", s"Bearer $token")
+        .header("Content-Type", "application/json")
+        .body(body.render())
+        .readTimeout(2.minutes)
+        .response(asString)
+        .send(backend)
+
+    Try(retry(schedule) {
+      try sendOnce()
+      catch
+        case t: Throwable =>
+          scribe.warn(s"OpenAI image request failed, will retry: ${t.getMessage}")
+          throw t
+    }).toEither.left
+      .map(err => s"OpenAI request failed after retries: ${err.getMessage}")
+      .flatMap { response =>
+        response.body.left.map(err => s"OpenAI returned error body: $err").flatMap { raw =>
+          Try {
+            val json = ujson.read(raw)
+            val b64 = json("data").arr.head("b64_json").str
+            Base64.getDecoder.decode(b64)
+          }.toEither.left
+            .map(err => s"Failed to parse OpenAI response: ${err.getMessage}; raw=$raw")
+        }
+      }
   }
 
   private def generateImagePrompt(titles: List[String]): String = {
