@@ -41,3 +41,21 @@ class PageRenderLogsTests extends munit.FunSuite:
     val html = Page.renderLogs("/tmp/x", List("<script>alert(1)</script>")).render
     assert(!html.contains("<script>alert"))
     assert(html.contains("&lt;script&gt;"))
+
+  test("renderLogs scroll container is separate from polling target so scroll survives ticks"):
+    // The outer container (overflow-y-auto, id=logs-modal-content) must NOT carry
+    // the hx-get/hx-trigger attributes — otherwise it would be outerHTML-swapped
+    // every tick and scrollTop would reset to 0.
+    val html = Page.renderLogs("/tmp/x", List("a")).render
+    val outerStart = html.indexOf("""id="logs-modal-content"""")
+    val outerEnd = html.indexOf(">", outerStart)
+    val outerTag = html.substring(outerStart, outerEnd)
+    assert(!outerTag.contains("hx-get"), s"outer tag must not poll: $outerTag")
+    assert(!outerTag.contains("hx-trigger"), s"outer tag must not poll: $outerTag")
+
+  test("renderLogs outer container has tail-mode hx-on handlers"):
+    // Without these, scroll position is preserved but the view never auto-follows
+    // new lines once they're below the visible area.
+    val html = Page.renderLogs("/tmp/x", List.empty).render
+    assert(html.contains("hx-on::before-swap"))
+    assert(html.contains("hx-on::after-swap"))

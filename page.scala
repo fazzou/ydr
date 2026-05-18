@@ -258,20 +258,33 @@ object Page:
 
   def renderLogs(path: String, logs: List[String]): TypedTag[String] = {
     val encodedPath = java.net.URLEncoder.encode(path, "UTF-8")
+    // Outer div is the stable scroll container — never swapped after initial open,
+    // so scrollTop survives polling ticks. The inner div is what HTMX polls and
+    // replaces; the before/after-swap handlers on the outer container implement
+    // tail mode (stay pinned to bottom unless the user scrolled up).
     div(
       id := "logs-modal-content",
       `class` := "max-h-96 overflow-y-auto",
-      attr("hx-get") := s"/logs?path=$encodedPath",
-      attr("hx-trigger") := "every 1s",
-      attr("hx-target") := "this",
-      attr("hx-swap") := "outerHTML"
+      attr("hx-on::before-swap") :=
+        "this._stick = (this.scrollHeight - this.scrollTop - this.clientHeight) < 20;",
+      attr("hx-on::after-swap") :=
+        "if (this._stick !== false) { this.scrollTop = this.scrollHeight; }"
     )(
-      if (logs.isEmpty) {
-        p(`class` := "text-gray-500")("No logs available for this directory.")
-      } else {
-        pre(`class` := "bg-gray-100 p-4 rounded text-xs font-mono overflow-x-auto")(
-          logs.mkString("\n")
-        )
-      }
+      div(
+        attr("hx-get") := s"/logs?path=$encodedPath",
+        attr("hx-trigger") := "every 1s",
+        attr("hx-target") := "this",
+        attr("hx-swap") := "outerHTML"
+      )(
+        if (logs.isEmpty) {
+          p(`class` := "text-gray-500")("No logs available for this directory.")
+        } else {
+          pre(
+            `class` := "bg-gray-100 p-4 rounded text-xs font-mono overflow-x-auto"
+          )(
+            logs.mkString("\n")
+          )
+        }
+      )
     )
   }
