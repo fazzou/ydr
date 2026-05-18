@@ -15,7 +15,7 @@ case object Idle extends RunnerState
 case object Processing extends RunnerState
 
 case class Runner(
-    stateActor: ActorRef[StateActor],
+    modelActor: ActorRef[ModelActor],
     imgGenActor: Option[ActorRef[ImgGen]],
     commonFlags: List[String]
 ) {
@@ -24,7 +24,7 @@ case class Runner(
 
   def processAll: Unit = supervised {
     scribe.info("Will process all")
-    processMany(stateActor.ask(_.getState).dirs)
+    processMany(modelActor.ask(_.getModel).dirs.values.toList)
   }
 
   def processMany(dirs: List[DirState], isHeadAllowed: Boolean = true): Unit =
@@ -38,13 +38,13 @@ case class Runner(
     }
 
   def process(dirState: DirState, isHead: Boolean) = supervised {
-    val output: mutable.Buffer[String] = mutable.Buffer()
     Try {
       val logFile = dirState.path / "log.txt"
+      os.write.over(logFile, "")
 
-      scribe.debug("Updating state actor about sync start")
-      stateActor.tell(
-        _.update(
+      scribe.debug("Updating model actor about sync start")
+      modelActor.tell(
+        _.upsertDir(
           dirState.copy(synchronizationState =
             Synchronizing(LocalDateTime.now())
           )
@@ -53,8 +53,7 @@ case class Runner(
 
       val write = ProcessOutput.Readlines { line =>
         scribe.info(line)
-        os.write.append(logFile, line)
-        output.append(line)
+        os.write.append(logFile, line + "\n")
       }
 
       scribe.info("Spawning proc")
@@ -80,11 +79,10 @@ case class Runner(
       imgGenActor.foreach(
         _.tell(_.generateImage(dirState.path, forceRegeneration = false))
       )
-      stateActor.tell(_.updateLogs(dirState.path, output.toList))
-      stateActor.tell(
-        _.update(
+      modelActor.tell(
+        _.upsertDir(
           dirState.copy(synchronizationState =
-            Synchronized(LocalDateTime.now(), output = output.toList, !success)
+            Synchronized(LocalDateTime.now(), error = !success)
           )
         )
       )

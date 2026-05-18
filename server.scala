@@ -45,16 +45,16 @@ object YdrServer:
   ): INPUT => Either[String, OUTPUT] =
     input => Try(logic(input)).toEither.left.map(_.toString)
 
-  def index(stateActor: ActorRef[StateActor]) = endpoint.get
+  def index(modelActor: ActorRef[ModelActor]) = endpoint.get
     .out(htmlBodyUtf8)
     .errorOut(stringBody)
     .handle(handleWithErrorHandling { _ =>
-      Page.index(stateActor.ask(_.getState)).render
+      Page.index(modelActor.ask(_.getModel)).render
     })
 
   case class NewItem(name: String, url: String) derives Schema
 
-  def add(stateActor: ActorRef[StateActor], runnerActor: ActorRef[Runner]) =
+  def add(modelActor: ActorRef[ModelActor], runnerActor: ActorRef[Runner]) =
     endpoint.post
       .in("add")
       .in(formBody[NewItem])
@@ -65,26 +65,25 @@ object YdrServer:
         os.makeDir.all(newDir)
         os.write(newDir / "yt-dlp.conf", newItem.url)
         val newDirState = DirState(newDir, NotSynchronized)
-        stateActor.tell(_.update(newDirState))
+        modelActor.tell(_.upsertDir(newDirState))
 
         runnerActor.tell(_.process(newDirState, isHead = false))
 
-        val currentState = stateActor.ask(_.getState)
-        Page.index(currentState).render
+        Page.index(modelActor.ask(_.getModel)).render
       })
 
-  def resync(stateActor: ActorRef[StateActor], runnerActor: ActorRef[Runner]) =
+  def resync(modelActor: ActorRef[ModelActor], runnerActor: ActorRef[Runner]) =
     endpoint.post
       .in("resync")
       .out(htmlBodyUtf8)
       .errorOut(stringBody)
       .handle(handleWithErrorHandling { _ =>
         runnerActor.tell(_.processAll)
-        Page.renderStateList(stateActor.ask(_.getState)).render
+        Page.renderStateList(modelActor.ask(_.getModel)).render
       })
 
   def resyncSingle(
-      stateActor: ActorRef[StateActor],
+      modelActor: ActorRef[ModelActor],
       runnerActor: ActorRef[Runner]
   ) =
     endpoint.post
@@ -93,28 +92,30 @@ object YdrServer:
       .out(htmlBodyUtf8)
       .errorOut(stringBody)
       .handle(handleWithErrorHandling { path =>
-        val state = stateActor.ask(_.getState)
-        state.dirs.find(_.path.toString == path) match {
+        modelActor.ask(_.findDir(os.Path(path))) match {
           case Some(dirState) =>
             runnerActor.tell(_.process(dirState, isHead = true))
-            Page.renderStateList(stateActor.ask(_.getState)).render
+            Page.renderStateList(modelActor.ask(_.getModel)).render
           case None =>
             throw new Exception(s"Directory not found: $path")
         }
       })
 
-  def stateList(stateActor: ActorRef[StateActor]) = endpoint
+  def stateList(modelActor: ActorRef[ModelActor]) = endpoint
     .in("state-list")
     .out(htmlBodyUtf8)
-    .handleSuccess(_ => Page.renderStateList(stateActor.ask(_.getState)).render)
+    .handleSuccess(_ => Page.renderStateList(modelActor.ask(_.getModel)).render)
 
-  def getLogs(stateActor: ActorRef[StateActor]) = endpoint.get
+  def getLogs = endpoint.get
     .in("logs")
     .in(query[String]("path"))
     .out(htmlBodyUtf8)
     .errorOut(stringBody)
     .handle(handleWithErrorHandling { path =>
-      val logs = stateActor.ask(_.getLogs(os.Path(path)))
+      val logFile = os.Path(path) / "log.txt"
+      val logs =
+        if os.exists(logFile) then os.read.lines(logFile).toList
+        else List.empty
       Page.renderLogs(path, logs).render
     })
 
@@ -131,7 +132,7 @@ object YdrServer:
 
   def savePrompt(
       imgGenActor: ActorRef[ImgGen],
-      stateActor: ActorRef[StateActor]
+      modelActor: ActorRef[ModelActor]
   ) = endpoint.post
     .in("prompt")
     .in(formBody[SavePrompt])
@@ -143,9 +144,8 @@ object YdrServer:
       scribe.info(decodedPrompt)
       imgGenActor.ask(_.savePrompt(decodedPrompt)) match {
         case Right(_) =>
-          // Regenerate images for all directories
-          val state = stateActor.ask(_.getState)
-          imgGenActor.tell(_.regenerateImages(state.dirs.map(_.path)))
+          val model = modelActor.ask(_.getModel)
+          imgGenActor.tell(_.regenerateImages(model.dirs.keys.toList))
           Page.promptSaved(decodedPrompt).render
         case Left(error) =>
           Page.promptSaveError(error).render
@@ -158,14 +158,17 @@ object YdrServer:
         token.map(existingToken =>
           Actor.create(new ImgGen(existingToken, dataDir))
         )
-      val stateActor = Actor.create(new StateActor)
-      initState(stateActor)
+      val modelActor = Actor.create(new ModelActor)
+      initState(modelActor)
       val runnerActor =
-        Actor.create(new Runner(stateActor, imgGenActor, commonFlags))
+        Actor.create(new Runner(modelActor, imgGenActor, commonFlags))
       fork {
         runnerActor.tell(_.processAll)
         interval.fold(()) { definedInterval =>
           forever {
+            val nextAt =
+              java.time.LocalDateTime.now().plusNanos(definedInterval.toNanos)
+            modelActor.tell(_.setNextSync(Some(nextAt)))
             sleep(definedInterval)
             runnerActor.tell(_.processAll)
           }
@@ -183,15 +186,15 @@ object YdrServer:
             imgGenActor.toList.flatMap(definedActor =>
               List(
                 getPrompt(definedActor),
-                savePrompt(definedActor, stateActor)
+                savePrompt(definedActor, modelActor)
               )
             ) ++ List(
-              stateList(stateActor),
-              getLogs(stateActor),
-              index(stateActor),
-              add(stateActor, runnerActor),
-              resync(stateActor, runnerActor),
-              resyncSingle(stateActor, runnerActor)
+              stateList(modelActor),
+              getLogs,
+              index(modelActor),
+              add(modelActor, runnerActor),
+              resync(modelActor, runnerActor),
+              resyncSingle(modelActor, runnerActor)
             )
           ).start()
         )(_.stop())
@@ -199,7 +202,7 @@ object YdrServer:
       never
     }
 
-  private def initState(stateActor: ActorRef[StateActor]) = supervised {
+  private def initState(modelActor: ActorRef[ModelActor]) = supervised {
     os
       .walk(dataDir)
       .filter { path =>
@@ -207,6 +210,6 @@ object YdrServer:
       }
       .map(DirState(_, NotSynchronized))
       .foreach { dirState =>
-        stateActor.tell(_.update(dirState))
+        modelActor.tell(_.upsertDir(dirState))
       }
   }

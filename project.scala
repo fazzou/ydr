@@ -1,4 +1,5 @@
 //> using toolkit 0.9.2
+//> using test.toolkit 0.9.2
 //> using dep "com.lihaoyi::scalatags:0.13.1"
 //> using dep "org.ocpsoft.prettytime:prettytime:5.0.9.Final"
 //> using dep "com.softwaremill.ox::core:1.0.4"
