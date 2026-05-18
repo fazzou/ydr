@@ -16,6 +16,7 @@ import scala.concurrent.duration.DurationInt
 
 class ImgGen(token: String, basePath: os.Path) {
   private val client = OpenAISyncClient(token)
+  private val retrySchedule = Schedule.exponentialBackoff(10.seconds).maxRetries(3)
 
   private val promptPath = basePath / "prompt.txt"
   private val defaultPrompt = mustache"""
@@ -81,12 +82,14 @@ Please respond only with the image prompt.
         .map(_.baseName)
         .toList
 
-      val prompt = generateImagePrompt(titles)
+      val result = for {
+        prompt <- generateImagePrompt(titles)
+        _ = scribe.info("Generated image prompt:")
+        _ = scribe.info(prompt)
+        bytes <- generateGptImage(prompt)
+      } yield bytes
 
-      scribe.info("Generated image prompt:")
-      scribe.info(prompt)
-
-      generateGptImage(prompt) match {
+      result match {
         case Right(bytes) =>
           os.write.over(coverPath, bytes)
           scribe.info(s"Cover image ${
@@ -112,8 +115,6 @@ Please respond only with the image prompt.
       "n" -> 1,
       "size" -> "1024x1024"
     )
-    val schedule = Schedule.exponentialBackoff(10.seconds).maxRetries(3)
-
     def sendOnce(): Response[Either[String, String]] =
       basicRequest
         .post(uri"https://api.openai.com/v1/images/generations")
@@ -124,42 +125,41 @@ Please respond only with the image prompt.
         .response(asString)
         .send(backend)
 
-    Try(retry(schedule) {
-      try sendOnce()
-      catch
-        case t: Throwable =>
-          scribe.warn(s"OpenAI image request failed, will retry: ${t.getMessage}")
-          throw t
-    }).toEither.left
-      .map(err => s"OpenAI request failed after retries: ${err.getMessage}")
-      .flatMap { response =>
-        response.body.left.map(err => s"OpenAI returned error body: $err").flatMap { raw =>
-          Try {
-            val json = ujson.read(raw)
-            val b64 = json("data").arr.head("b64_json").str
-            Base64.getDecoder.decode(b64)
-          }.toEither.left
-            .map(err => s"Failed to parse OpenAI response: ${err.getMessage}; raw=$raw")
-        }
+    retryWithLogging("OpenAI image request")(sendOnce()).flatMap { response =>
+      response.body.left.map(err => s"OpenAI returned error body: $err").flatMap { raw =>
+        Try {
+          val json = ujson.read(raw)
+          val b64 = json("data").arr.head("b64_json").str
+          Base64.getDecoder.decode(b64)
+        }.toEither.left
+          .map(err => s"Failed to parse OpenAI response: ${err.getMessage}; raw=$raw")
       }
+    }
   }
 
-  private def generateImagePrompt(titles: List[String]): String = {
-    val client = OpenAISyncClient(token)
-
+  private def generateImagePrompt(titles: List[String]): Either[String, String] = {
     val contentPrompt = mustache.render(getPrompt())(
       Context("titles" -> Value.of(titles.mkString("\n")))
     )
-
-    val response = client.createChatCompletion(
-      ChatRequestBody.ChatBody(
-        model = ChatCompletionModel.GPT5,
-        messages = List(UserMessage(TextContent(contentPrompt)))
-      )
+    val request = ChatRequestBody.ChatBody(
+      model = ChatCompletionModel.GPT5,
+      messages = List(UserMessage(TextContent(contentPrompt)))
     )
 
-    response.choices.headOption
-      .map(_.message.content)
-      .getOrElse("A symbolic representation of diverse topics")
+    retryWithLogging("OpenAI chat request")(client.createChatCompletion(request))
+      .map(response =>
+        response.choices.headOption
+          .map(_.message.content)
+          .getOrElse("A symbolic representation of diverse topics")
+      )
   }
+
+  private def retryWithLogging[T](label: String)(action: => T): Either[String, T] =
+    Try(retry(retrySchedule) {
+      try action
+      catch
+        case t: Throwable =>
+          scribe.warn(s"$label failed, will retry: ${t.getMessage}")
+          throw t
+    }).toEither.left.map(err => s"$label failed after retries: ${err.getMessage}")
 }
