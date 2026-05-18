@@ -15,10 +15,6 @@ class PageRenderLogsTests extends munit.FunSuite:
     val html = Page.renderLogs("/tmp/x", List("a", "b", "c")).render
     assert(html.contains("a\nb\nc"))
 
-  test("renderLogs root div keeps id=logs-modal-content so button hx-target hits it"):
-    val html = Page.renderLogs("/tmp/x", List.empty).render
-    assert(html.contains("""id="logs-modal-content""""))
-
   test("renderLogs polls every 1s so logs refresh live while modal is open"):
     val html = Page.renderLogs("/tmp/x", List.empty).render
     assert(html.contains("""hx-trigger="every 1s""""))
@@ -42,20 +38,21 @@ class PageRenderLogsTests extends munit.FunSuite:
     assert(!html.contains("<script>alert"))
     assert(html.contains("&lt;script&gt;"))
 
-  test("renderLogs scroll container is separate from polling target so scroll survives ticks"):
-    // The outer container (overflow-y-auto, id=logs-modal-content) must NOT carry
-    // the hx-get/hx-trigger attributes — otherwise it would be outerHTML-swapped
-    // every tick and scrollTop would reset to 0.
+  test("renderLogs does NOT render the scroll container (it lives in the modal)"):
+    // Returning the scroll container here would, on polling tick, get nested
+    // inside the existing one — duplicating id and breaking the layout.
     val html = Page.renderLogs("/tmp/x", List("a")).render
-    val outerStart = html.indexOf("""id="logs-modal-content"""")
-    val outerEnd = html.indexOf(">", outerStart)
-    val outerTag = html.substring(outerStart, outerEnd)
-    assert(!outerTag.contains("hx-get"), s"outer tag must not poll: $outerTag")
-    assert(!outerTag.contains("hx-trigger"), s"outer tag must not poll: $outerTag")
+    assert(
+      !html.contains("logs-modal-content"),
+      s"renderLogs must not include the scroll container id: $html"
+    )
 
-  test("renderLogs outer container has tail-mode hx-on handlers"):
-    // Without these, scroll position is preserved but the view never auto-follows
-    // new lines once they're below the visible area.
-    val html = Page.renderLogs("/tmp/x", List.empty).render
+  test("Page.index renders the stable scroll container with tail-mode hx-on handlers"):
+    // The scroll container has to live in the static modal markup so its
+    // scrollTop survives polling ticks. Without the hx-on handlers, the view
+    // never auto-follows new lines once they're below the visible area.
+    val html = Page.index(YdrModel.empty).render
+    assert(html.contains("""id="logs-modal-content""""))
+    assert(html.contains("overflow-y-auto"))
     assert(html.contains("hx-on::before-swap"))
     assert(html.contains("hx-on::after-swap"))

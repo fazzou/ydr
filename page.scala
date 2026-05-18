@@ -171,7 +171,6 @@ object Page:
           `class` := "text-xs bg-gray-600 text-white py-1 px-3 rounded hover:bg-gray-700 transition-colors",
           attr("hx-get") := s"/logs?path=${item.path}",
           attr("hx-target") := "#logs-modal-content",
-          attr("hx-swap") := "outerHTML",
           attr("hx-trigger") := "click",
           onclick := "document.getElementById('logs-modal').classList.remove('hidden')"
         )("Logs"),
@@ -241,14 +240,20 @@ object Page:
           h3(`class` := "text-lg font-medium text-gray-900")("Logs"),
           button(
             `class` := "text-gray-400 hover:text-gray-600",
-            onclick := """document.getElementById('logs-modal').classList.add('hidden'); document.getElementById('logs-modal-content').outerHTML = '<div id=\"logs-modal-content\" class=\"max-h-96 overflow-y-auto\"><p class=\"text-gray-500\">Loading logs...</p></div>';"""
+            onclick := """document.getElementById('logs-modal').classList.add('hidden'); var c = document.getElementById('logs-modal-content'); c.innerHTML = '<p class=\"text-gray-500\">Loading logs...</p>'; c._stick = undefined;"""
           )(
             i(`class` := "fas fa-times")
           )
         ),
+        // Stable scroll container: persists across polling ticks so scrollTop
+        // survives. Tail-mode handlers listen for descendant swaps via bubbling.
         div(
           id := "logs-modal-content",
-          `class` := "max-h-96 overflow-y-auto"
+          `class` := "max-h-96 overflow-y-auto",
+          attr("hx-on::before-swap") :=
+            "this._stick = (this.scrollHeight - this.scrollTop - this.clientHeight) < 20;",
+          attr("hx-on::after-swap") :=
+            "if (this._stick !== false) { this.scrollTop = this.scrollHeight; }"
         )(
           p(`class` := "text-gray-500")("Loading logs...")
         )
@@ -258,33 +263,25 @@ object Page:
 
   def renderLogs(path: String, logs: List[String]): TypedTag[String] = {
     val encodedPath = java.net.URLEncoder.encode(path, "UTF-8")
-    // Outer div is the stable scroll container — never swapped after initial open,
-    // so scrollTop survives polling ticks. The inner div is what HTMX polls and
-    // replaces; the before/after-swap handlers on the outer container implement
-    // tail mode (stay pinned to bottom unless the user scrolled up).
+    // Renders only the polling target — the stable scroll container is in logsModal.
+    // On initial load, the button hx-swap=innerHTML places this div inside the
+    // scroll container; on each tick it outerHTML-replaces itself with the next
+    // snapshot. The scroll container's hx-on handlers catch the bubbling events
+    // and implement tail mode.
     div(
-      id := "logs-modal-content",
-      `class` := "max-h-96 overflow-y-auto",
-      attr("hx-on::before-swap") :=
-        "this._stick = (this.scrollHeight - this.scrollTop - this.clientHeight) < 20;",
-      attr("hx-on::after-swap") :=
-        "if (this._stick !== false) { this.scrollTop = this.scrollHeight; }"
+      attr("hx-get") := s"/logs?path=$encodedPath",
+      attr("hx-trigger") := "every 1s",
+      attr("hx-target") := "this",
+      attr("hx-swap") := "outerHTML"
     )(
-      div(
-        attr("hx-get") := s"/logs?path=$encodedPath",
-        attr("hx-trigger") := "every 1s",
-        attr("hx-target") := "this",
-        attr("hx-swap") := "outerHTML"
-      )(
-        if (logs.isEmpty) {
-          p(`class` := "text-gray-500")("No logs available for this directory.")
-        } else {
-          pre(
-            `class` := "bg-gray-100 p-4 rounded text-xs font-mono overflow-x-auto"
-          )(
-            logs.mkString("\n")
-          )
-        }
-      )
+      if (logs.isEmpty) {
+        p(`class` := "text-gray-500")("No logs available for this directory.")
+      } else {
+        pre(
+          `class` := "bg-gray-100 p-4 rounded text-xs font-mono overflow-x-auto"
+        )(
+          logs.mkString("\n")
+        )
+      }
     )
   }
